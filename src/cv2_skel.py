@@ -23,8 +23,26 @@ def get_sys_encoding():
     return codecs.lookup(locale.getpreferredencoding()).name
 
 
+def get_console_encoding():
+    import sys
+    import codecs
+    if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding:
+        return codecs.lookup(sys.stdout.encoding).name
+    return get_sys_encoding()
+
+
+# used where non-ascii character may cause chaos
 file_encoding = 'utf-8'
 sys_encoding = get_sys_encoding()
+con_encoding = get_console_encoding()
+
+
+def enc_sys_to_file(s):
+    return unicode(s, sys_encoding).encode(file_encoding)
+
+
+def enc_file_to_sys(s):
+    return unicode(s, file_encoding).encode(sys_encoding)
 
 
 def get_skel_name(char):
@@ -283,11 +301,99 @@ def draw_branch(branches):
     img.show(title='Draw Branch')
 
 
+def __get_branches(cons, im):
+
+    branches = dict()  # (p1, p2) -> list of pts
+    ends = []
+    indices = []
+    # all_pts = []
+
+    for i, c in enumerate(cons):
+
+        log.debug('---> con {}, shape={}'.format(i, c.shape))
+        assert c.ndim == 3 and c.shape[1] == 1, 'cv2 contours shape error'
+        c.resize(c.shape[0], 2)
+
+        # c = c.tolist()
+        c = map(tuple, c.tolist())
+        in_pts = False
+        pts = []
+        for j, q in enumerate(c):
+
+            # 非重复 U，重复 R
+            # 一旦由非重复点 U(p) 切换到重复点 R(q)，p 是端点；
+            # 反之，一旦由 R(q) 切换到 U(p)，U(p) 是交叉点；
+            # 此外，最后一个点无法从 R 切换到 U, 但它是端点；
+            # 因此，只要记录下重复的分支段即可
+            if q in pts:  # U -> R
+                if not in_pts:
+                    in_pts = True
+                    idx = j-1
+                    p = c[idx]
+                    ends.append(p)
+                    indices.append(idx)
+                elif q in ends:
+                    ends.append(q)
+                    indices.append(j)
+                    ends.append(q)
+                    indices.append(j)
+            else:
+                if in_pts:  # R -> U
+                    in_pts = False
+                    if 2 < count_neighbor_pt(im, q):
+                        idx = j
+                    else:
+                        idx = j-1
+                    p = c[idx]
+                    ends.append(p)
+                    indices.append(idx)
+            pts.append(q)
+
+        # Append last point
+        if len(ends) % 2 != 0:
+            pts.append(c[0])
+            idx = len(c)
+            p = pts[idx]
+            ends.append(p)
+            indices.append(idx)
+
+        # Seperate branches
+        for i in range(0, len(ends), 2):
+            p, q = ends[i:i+2]
+            m, n = indices[i:i+2]
+            branches[(p, q)] = pts[m:n+1]
+            log.debug('{} [{}, {}]'.format(i//2, p, q))
+
+    log.debug('branch ends: %s' % (len(ends)/2.))
+    log.debug('branches: %s %s' % (len(branches), map(len, branches.values())))
+    return branches
+
+
+def __get_ends_juncs(branches):
+    br_ends = []
+    for k in branches.keys():
+        br_ends.extend(k)
+
+    cnt = Counter(br_ends)
+    ends = []
+    juncs = []
+    for k, v in cnt.items():
+        if v == 1:
+            ends.append(k)
+        else:
+            juncs.append(k)
+
+    log.debug('len(ends) : {}'.format(len(ends)))
+    log.debug('len(juncs): {}'.format(len(juncs)))
+    return ends, juncs
+
+
 def main():
     log.debug('cv2 version: {}'.format(cv2.__version__))
-    log.debug('PWD={}'.format(os.getcwd()))
+    # log.debug('PWD: {}'.format(os.getcwd()))
+
     dst_dir = 'data/NotoSans'
-    char = u"米回既"[2]
+    char = u"米回既"[0]
 
     name = get_skel_name(char)
     # name = '1.pgm'
@@ -305,10 +411,13 @@ def main():
 
     # ends = find_branch_ends(im)
 
-    branches, ends, juncs = get_branch(cons, im)
+    # branches, ends, juncs = get_branch(cons, im)
+    branches = __get_branches(cons, im)
+    ends, juncs = __get_ends_juncs(branches)
+    branches = branches.values()
 
     # mark_img(im, ends, juncs)
-    draw_branch(branches)
+    # draw_branch(branches)
 
     log.debug('done.')
 

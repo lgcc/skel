@@ -24,4 +24,5 @@ class Log(object):
 
 if __name__ == '__main__':
     log = Log(level=Log.INFO)
-    log.debug('\n--- debug start ---')
+    log.debug('--- debug start ---')
+    log.info('=== Info ===')
