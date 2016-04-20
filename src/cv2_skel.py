@@ -18,7 +18,8 @@ def get_sys_encoding():
     Get os encoding, i.e. on windows maybe cp396, *nix maybe utf-8
     :return: string of encoding name
     """
-    import locale, codecs
+    import locale
+    import codecs
     return codecs.lookup(locale.getpreferredencoding()).name
 
 
@@ -38,38 +39,6 @@ def get_skel_name(char):
         u = char
         ch = char.encode(file_encoding)
     return "%04X_%s.pgm" % (ord(u), ch)
-
-
-def sep_junctions(c):
-    junctions = []
-    pts = []
-    test = [[69, 56], [110, 123]]
-    for j in range(len(c)):
-        p = c[j]
-        p_prev = c[j - 1]
-        p_prev2 = c[j - 2]
-
-        if p_prev2 == p:
-            junctions[tuple(p_prev)] = 1
-            log.debug('ends: {}'.format(p))
-
-        if p not in pts:
-            # if p_prev in pts:
-            #     junctions[tuple(p_prev)] += 1
-            #     # br = list()
-            #     # br.append(tuple(p_prev))
-            #     # branch_lst.append(br)
-            #     log.debug('in --> in at {}'.format(p))
-            pts.append(p)
-            if p in test:
-                log.debug('p_prev & p: {} , {}'.format(p_prev, p))
-        else:
-            if p in test:
-                log.debug('x p_prev & p: {} , {}'.format(p_prev, p))
-                # elif p_prev not in pts:
-                #     junctions[tuple(p)] += 1
-                #     log.debug('not in --> in at {}'.format(p))
-        return junctions, pts
 
 
 code_map = {
@@ -190,10 +159,6 @@ def get_branch(cons, im):
                 junctions_map[t] += 1
                 end_lst.append(t)
 
-            # # if p in ([217, 191], [218, 192]):
-            # if i == 2 and j in (1212, 1535, 1536, 1823, 1824):
-            #     log.debug('[ERR] red:', i, j, c[j - 2:j + 3], p not in pts, p_in_pts)
-
             if p not in pts:  # unique
                 pts.append(p)
                 if p_in_pts:  # from repeated to unique pt
@@ -235,7 +200,8 @@ def get_branch(cons, im):
         if e - b == 1:
             log.debug('skip {}: {} - {} == 1'.format(i, e, b))
             continue
-        if abs(pts[b][0] - pts[e][0]) > 1 or abs(pts[b][0] - pts[e][0]) > 1:  # 由于只记录了一次交叉点，形成一个 孤立端点 和 分支
+        # 由于只记录了一次交叉点，会形成一个 孤立端点 和 分支，跳过它
+        if abs(pts[b][0] - pts[e][0]) > 1 or abs(pts[b][0] - pts[e][0]) > 1:
             b += 1
         else:
             e += 1
@@ -297,13 +263,23 @@ def mark_img(im, ends, juncs):
 def draw_branch(branches):
     img = Image.new('RGB', (600, 600), 'black')
     draw = ImageDraw.Draw(img)
+
+    def _translate(pt, offset):
+        return tuple((pt[0] + offset, pt[1] + offset))
+
     for i, br in enumerate(branches):
-        offset = 0 #15 * i
-        # fill = ("#%06x" % (0xFFFFFF & (i << 8)))
+
+        offset = 0  # 15 * i
+        xy = [_translate(p, offset) for p in br]
         fill = '#%06X' % np.random.randint(0, 0xFFFFFF)
-        draw.point(map(lambda t: tuple((t[0] + offset, t[1] + offset)), br), fill=fill)
-        t = br[0]
-        draw.text(tuple((t[0] + offset, t[1] + offset)), str(i))
+        draw.point(xy, fill=fill)
+
+        # apply offset to start of branch and draw
+        text_offset = offset + i
+        pt = br[-1]
+        xy = _translate(pt, text_offset)
+        draw.text(xy, str(i), fill=fill)
+
     img.show(title='Draw Branch')
 
 
